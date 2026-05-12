@@ -138,6 +138,7 @@ def _base_hidden_defaults_dict() -> Dict[str, Any]:
                 "timelike_he": True,
                 "num_he_cycles": 1,
                 "use_weight2_timelike": False,
+                "use_parallel_spacelike": False,
                 "max_passes_w1": 8,
                 "max_passes_w2": 4,
                 "decompose_y": True,
@@ -358,12 +359,32 @@ def validate_public_config(cfg: DictConfig) -> PublicModelSpec:
                 "Config field 'data.precomputed_frames_dir' is not supported in the public release. "
                 "Remove it from the config/CLI overrides."
             )
-        allowed_data_keys = {"code_rotation", "noise_model"}
+        # `use_compile` and `use_parallel_spacelike` are HE-acceleration flags
+        # surfaced in the public release. Both default False; users opt in via
+        # `conf/config_public.yaml` or CLI override. See README.md, section
+        # "HE acceleration (advanced): parallel spacelike" for the contract.
+        allowed_data_keys = {
+            "code_rotation",
+            "noise_model",
+            "use_compile",
+            "use_parallel_spacelike",
+        }
         for k in cfg.data.keys():
             if k not in allowed_data_keys:
                 raise ValueError(
                     f"Config field 'data.{k}' is not supported in the public release. "
                     f"Allowed data fields are: {sorted(allowed_data_keys)}"
+                )
+        # These two flags are part of the public config surface, so keep their
+        # accepted type stricter than hidden/internal HE knobs that are merged
+        # from trusted defaults. OmegaConf accepts strings like "True"/"yes",
+        # which would otherwise flow into downstream `bool(...)` casts and
+        # become truthy regardless of the user's intent.
+        for bool_key in ("use_compile", "use_parallel_spacelike"):
+            if bool_key in cfg.data and not isinstance(cfg.data[bool_key], bool):
+                raise ValueError(
+                    f"Config field 'data.{bool_key}' must be a boolean "
+                    f"(got {type(cfg.data[bool_key]).__name__}: {cfg.data[bool_key]!r})."
                 )
         # Validate rotation value (accept O1..O4; also allow internal XV/XH/ZV/ZH for compatibility).
         if "code_rotation" in cfg.data:
